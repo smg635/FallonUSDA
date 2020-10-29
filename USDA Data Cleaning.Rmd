@@ -1,0 +1,145 @@
+---
+title: "Messing Around"
+author: "Sam Galloway"
+date: "10/28/2020"
+output: html_document
+---
+```{r}
+
+```
+
+
+```{r check_packages, include = FALSE}
+# Installs required packages if they aren't already installed!
+  packageList <- c("pdftools","tm","tesseract","tidyverse","tools","sjmisc","tabulizer","readr",
+                   "svdialogs")
+  for(p in packageList){
+    if (!requireNamespace(p)) {
+      install.packages(p)
+    }
+  }
+```
+
+```{r setup, include=FALSE}
+library(pdftools)
+library(tm)
+library(tesseract)
+library(tidyverse)
+library(tools)
+library(sjmisc)
+library(tabulizer)
+library(readr)
+library(svDialogs)
+```
+
+The following is my code that reads in the pdf and then splits it up into multiple columns appropriately. 
+
+```{r}
+src <- ""
+
+QTD_COLUMNS <- 2
+read_text <- function(text) {
+  result <- ''
+  #Get all index of " " from page.
+  lstops <- gregexpr(pattern =" ",text)
+  #Puts the index of the most frequents ' ' in a vector.
+  stops <- as.integer(names(sort(table(unlist(lstops)),decreasing=TRUE)[1:2]))
+  #Slice based in the specified number of colums (this can be improved)
+  for(i in seq(1, QTD_COLUMNS, by=1))
+  {
+    temp_result <- sapply(text, function(x){
+      start <- 1
+      stop <-stops[i] 
+      if(i > 1)            
+        start <- stops[i-1] + 1
+      if(i == QTD_COLUMNS)#last column, read until end.
+        stop <- nchar(x)+1
+      substr(x, start=start, stop=stop)
+    }, USE.NAMES=FALSE)
+    result <- append(result, temp_result)
+  }
+  result
+}
+```
+
+```{r}
+#Setting this equal to the pdf I've been messing around with the most initially for now, in full one will change to a folder multiple pdfs are stored in
+txt <- pdf_text("Warren et al. 1986 The Influence of Livestock Trampling under Intensive Rotation Grazing on Soil Hydrologic Characteristics (C).pdf")
+result <- ''
+finalPDF <- NULL
+for (i in 1:length(txt)) { 
+  result=NULL
+  #Goes through every page of the pdf, splits them appropriately, and then appends them to a final PDF (that's still appropriately seperated by page, for efficiency's sake of when we only need to look at first page)
+  page <- txt[[i]]
+  t1 <- unlist(strsplit(page, "\r\n")) 
+  maxSize <- max(nchar(t1))
+  t1 <- paste0(t1,strrep(" ", maxSize-nchar(t1)))
+  result = append(result,read_text(t1))
+  finalPDF[[i]] = result
+}
+finalPDF <- finalPDF %>% lapply(trimws)
+```
+
+
+```{r}
+##Here, I get the first page of the PDF, so that it's faster to extract data about the title/authors/journal
+firstPage <- finalPDF[[1]]
+```
+
+Currently assumes all authors are in caps for simplicity's sake, will be expanded upon.
+```{r}
+Title <- ""
+
+for (i in 1:length(firstPage)) {
+  #Looks for the first string where there are at least five consecutive capital letters, as this is where it's currently assumed the author is. If it reaches this, it breaks
+  if(grepl("[[:upper:]]{5,}",firstPage[i])) {
+    break
+  }
+  #If the line is before the authors, it's presumed to be part of the title, so this information is saved.
+  else {
+    Title = paste(Title,firstPage[i],sep=" ")
+  }
+}
+
+Title <- trimws(firstPage)
+Title
+```
+
+Currently assumes authors are tracked by being all in capital letters, will be expanded upon.
+```{r}
+#Gets the first string with 5 consecutive capital letters in it, currently assumed to be the authors
+Authors <- str_split(grep("[[:upper:]]{5,}",firstPage,value=T)[1],",") %>% lapply(trimws) %>% lapply(toupper)
+
+Authors 
+```
+
+```{r}
+Journal <- ""
+
+#In a for loop that starts at the end, we look for a string containing the word "Journal"-- needs to be expanded upon more, as since writing this code I found that most of the journals don't actually have "Journal" in their name.
+for (i in length(firstPage):1) {
+  if (grepl("JOURNAL", result[i])) {
+    new <- trimws(result[i])
+    #Here, I split it up so that all of the dates that are in the same line are seperated out, so that we're left with only the Journal title.
+    Journal <- strsplit(new,split="        ")[[1]][1]
+    break
+  }
+}
+
+Journal
+```
+
+Here is a test of how we can use dialogue boxes to verify the information gathered.
+```{r}
+Journal <- dlgInput("What is the journal's name?", Journal)
+```
+
+
+
+
+
+
+
+
+
+
